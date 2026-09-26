@@ -1,6 +1,7 @@
 #include <furi.h>
 #include <gui/gui.h>
 #include "classifier.h"
+#include "card_reader.h"  
 
 // etiqueta para identificar los logs
 #define TAG "NfcClassifier"  
@@ -77,6 +78,11 @@ static void nfc_classifier_input_callback(InputEvent* event, void* context) {
     furi_message_queue_put (cola, event, FuriWaitForever);
 }
 
+// TEMPORAL: de moment nomes registrem el SAK que llegim
+static void on_card_found(uint8_t sak, bool iso4, void* context) {
+    UNUSED(context);
+    FURI_LOG_I(TAG, "targeta! sak=%02X iso4=%d", sak, iso4);
+}
 
 // funcion de entrada
 int32_t nfc_classifier_app(void* p) {
@@ -110,6 +116,10 @@ int32_t nfc_classifier_app(void* p) {
     // enganxem la finestra a la pantalla en pantalla completa
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
+    // arrenquem el lector: li donem la nostra callback (l'app decideix que fer)
+    CardReader* reader = card_reader_alloc();
+    card_reader_start(reader, on_card_found, NULL); 
+
     //delay pa ver algo
     //furi_delay_ms(5000);
     //Ahora, en vez de un delay de 5 segundos, pongo un bucle de eventos
@@ -125,6 +135,11 @@ int32_t nfc_classifier_app(void* p) {
         }
     }
 
+    // (just despres del while, abans de desmuntar la GUI)
+    card_reader_stop(reader);
+    card_reader_free(reader);
+
+   
     //y dessecuestramos todo lo q nos habíamos robado, importante orden inverso
     gui_remove_view_port(gui, view_port);
 
