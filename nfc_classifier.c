@@ -13,6 +13,17 @@ typedef struct {
     Verdict verdict;
 } CardInfo;
 
+typedef enum {
+    AppEventInput,
+    AppEventCard,
+} AppEventType;
+
+typedef struct {
+    AppEventType type;
+    InputEvent input;   // valid si type == AppEventInput
+    uint8_t sak;        // valids si type == AppEventCard
+    bool iso4;
+} AppEvent;
 
 
 // la funcion que la GUI llama para escribir en la pantalla
@@ -74,31 +85,27 @@ static void nfc_classifier_input_callback(InputEvent* event, void* context) {
     // el contexto es la cola que le hemos entregado antes
     FuriMessageQueue* cola = context;
 
+    AppEvent app_event = { .type = AppEventInput, .input = *event };
+
     //ponemos el evento del boton a la cola
-    furi_message_queue_put (cola, event, FuriWaitForever);
+    furi_message_queue_put (cola, &app_event, FuriWaitForever);
 }
 
-// TEMPORAL: de moment nomes registrem el SAK que llegim
 static void on_card_found(uint8_t sak, bool iso4, void* context) {
-    UNUSED(context);
-    FURI_LOG_I(TAG, "targeta! sak=%02X iso4=%d", sak, iso4);
+    FuriMessageQueue* cola = context;   // el context ara es la cua
+    AppEvent app_event = { .type = AppEventCard, .sak = sak, .iso4 = iso4 };
+    furi_message_queue_put(cola, &app_event, FuriWaitForever);
 }
 
 // funcion de entrada
 int32_t nfc_classifier_app(void* p) {
     UNUSED(p);                 // para silenciar el warning 
 
-    // dades falses per provar sense NFC
-    uint8_t fake_sak = 0x08;
-    bool fake_iso4 = false;
-    // de moment fixem el tipus a mà, per provar sense NFC
-    CardType t = classify(fake_sak, fake_iso4);
-    CardInfo card = { .type = t, .verdict = assess(t) };  
-
+    CardInfo card = { .type = CardTypeUnknown, .verdict = VerdictUnknown }; 
     //bustia per rebre els esdeveniments de botons
     //pongo un 8 porque me apetece, un limite comodo de eventos acumulados en la cola,
     //es imposible que se llene, a menos que venga una mega rafaga
-    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
+    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(AppEvent));
     
     //pido prestado el servicio de la pantalla
     Gui* gui = furi_record_open(RECORD_GUI);
@@ -118,7 +125,7 @@ int32_t nfc_classifier_app(void* p) {
 
     // arrenquem el lector: li donem la nostra callback (l'app decideix que fer)
     CardReader* reader = card_reader_alloc();
-    card_reader_start(reader, on_card_found, NULL); 
+    card_reader_start(reader, on_card_found, event_queue);
 
     //delay pa ver algo
     //furi_delay_ms(5000);
@@ -128,12 +135,20 @@ int32_t nfc_classifier_app(void* p) {
     //cuando un evento llega lo copia a la variable event y sigue. 
     // si la pulsacion es corta y además es de tirar para atras, salimos y la app se desmonta
     // si es cualquier otra tecla, no se cumplirá el if y por tanto el bucle se queda esperando otra tecla
-    InputEvent event;
+    AppEvent event;
     while(furi_message_queue_get(event_queue, &event, FuriWaitForever) == FuriStatusOk) {
-        if (event.type == InputTypeShort && event.key == InputKeyBack) {
+    if(event.type == AppEventInput) {
+        // com abans: sortim si es Enrere
+        if(event.input.type == InputTypeShort && event.input.key == InputKeyBack) {
             break;
         }
+    } else if(event.type == AppEventCard) {
+        // targeta nova: recalculem i actualitzem l'estat que pinta la pantalla
+        card.type = classify(event.sak, event.iso4);
+        card.verdict = assess(card.type);
+        view_port_update(view_port);   // demanem un redibuix
     }
+}
 
     // (just despres del while, abans de desmuntar la GUI)
     card_reader_stop(reader);
