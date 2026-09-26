@@ -33,3 +33,32 @@ CardType classify(uint8_t sak, bool iso4) {
     }
     return tipus;
 }
+
+Verdict assess(CardType type) {
+    Verdict veredicte;
+    switch (type)
+    {
+    // Ultralight -> VerdictGreen  (sense xifrat, clonable sencera)
+    case CardTypeUltralight:
+        veredicte = VerdictGreen ;
+        break;
+    
+    // Classic 1K i 4K -> VerdictAmber  (Crypto1 trencat, depèn de les claus)
+    //els apilo pq donen el mateix comportament i molo molt
+    case CardTypeClassic1k:
+    case CardTypeClassic4k:
+        veredicte = VerdictAmber;
+        break;
+    
+    // DESFire -> VerdictRed    (AES + auth mútua, no clonable)
+    case CardTypeDesfire:
+        veredicte = VerdictRed;
+        break;
+
+    // qualsevol altre -> VerdictUnknown
+    default:
+    veredicte = VerdictUnknown;
+        break;
+    }
+    return veredicte;
+}

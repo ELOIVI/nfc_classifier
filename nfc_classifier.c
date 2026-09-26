@@ -1,25 +1,17 @@
 #include <furi.h>
 #include <gui/gui.h>
+#include "classifier.h"
 
-//los tipos de targeta
-typedef enum {
-    CardTypeUnknown,     // per defecte, encara no classificada. La ponemos primero pq al no asignarle valor el campo numerico 
-                         //se queda a 0, por lo tanto una sin clasifucar y una desconocida son equivalentes
-    CardTypeUltralight,  // Ultralight / NTAG
-    CardTypeClassic1k,
-    CardTypeClassic4k,
-    CardTypeDesfire,
-} CardType;
+// etiqueta para identificar los logs
+#define TAG "NfcClassifier"  
 
 //ifnormacio que tenim del xip actual
 // struct con un solo campo de momento no me juzguen
 typedef struct {
     CardType type;
+    Verdict verdict;
 } CardInfo;
 
-
-// etiqueta para identificar los logs
-#define TAG "NfcClassifier"  
 
 
 // la funcion que la GUI llama para escribir en la pantalla
@@ -28,28 +20,51 @@ static void nfc_classifier_draw_callback(Canvas* canvas, void* context) {
     canvas_clear(canvas); //borrem tot el q hi havia
     canvas_set_font(canvas, FontPrimary); 
 
+    canvas_draw_str(canvas, 2, 10, "NFC Classifier"); 
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str(canvas, 2, 25, "Tipus:");   // etiqueta fixa
+
     switch (info->type)
     {
     case CardTypeUltralight:
-        canvas_draw_str(canvas, 4, 12, "Ultralight / NTAG");
+        canvas_draw_str(canvas, 27, 25, "Ultralight / NTAG");
         break;
     case CardTypeClassic1k:
-        canvas_draw_str(canvas, 4, 12, "Classic1k");
+        canvas_draw_str(canvas, 27, 25, "Classic1k");
         break;
     case CardTypeClassic4k:
-        canvas_draw_str(canvas, 4, 12, "Classic4k");
+        canvas_draw_str(canvas, 27, 25, "Classic4k");
         break;
     case CardTypeDesfire:
-        canvas_draw_str(canvas, 4, 12, "Desfire");
+        canvas_draw_str(canvas, 27, 25, "Desfire");
         break;
     
     default:
-        canvas_draw_str(canvas, 4, 12, "Desconeguda");
+        canvas_draw_str(canvas, 27, 25, "Desconeguda");
+        break;
+    }
+
+    canvas_draw_str(canvas, 2, 35, "Estat:");   // etiqueta fixa
+    switch(info->verdict) {
+        case VerdictGreen:
+            canvas_draw_str(canvas, 28, 35, "Clonable");
+            break;
+
+        case VerdictAmber:
+            canvas_draw_str(canvas, 28, 35, "Condicional");
+            break;
+
+        case VerdictRed:
+            canvas_draw_str(canvas, 28, 35, "Intocable");
+            break;
+            
+        default:
+            canvas_draw_str(canvas, 28, 35, "?");
         break;
     }
 
 
-    canvas_draw_str(canvas, 50, 50, "NFC Classifier"); //suposo que x=2 i y=12??
 }
 
 // cada vez que se pulse un boton la GUI llama a esta funcion
@@ -67,8 +82,12 @@ static void nfc_classifier_input_callback(InputEvent* event, void* context) {
 int32_t nfc_classifier_app(void* p) {
     UNUSED(p);                 // para silenciar el warning 
 
+    // dades falses per provar sense NFC
+    uint8_t fake_sak = 0x08;
+    bool fake_iso4 = false;
     // de moment fixem el tipus a mà, per provar sense NFC
-    CardInfo card = { .type = CardTypeClassic1k };  
+    CardType t = classify(fake_sak, fake_iso4);
+    CardInfo card = { .type = t, .verdict = assess(t) };  
 
     //bustia per rebre els esdeveniments de botons
     //pongo un 8 porque me apetece, un limite comodo de eventos acumulados en la cola,
